@@ -1,23 +1,28 @@
 require('dotenv').config();
 const express  = require('express');
 const cors     = require('cors');
-const sql      = require('mssql');
+const { Pool } = require('pg');
 const PDFDocument = require('pdfkit');
 const { Parser }  = require('json2csv');
 const crypto      = require('crypto');
+const fs = require('fs');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ── DB Config ──────────────────────────────────────────────
-const dbConfig = {
-    user: process.env.DB_USER, password: process.env.DB_PASSWORD,
-    server: process.env.DB_SERVER, database: process.env.DB_NAME,
-    options: { encrypt: false, trustServerCertificate: true }
-};
-sql.connect(dbConfig)
-    .then(() => console.log('✅ Conexión exitosa a SQL Server'))
+// ── DB Config (PostgreSQL / Supabase) ─────────────────────────
+const pool = new Pool({
+    user: process.env.DB_USER,
+    host: process.env.DB_HOST,
+    database: process.env.DB_NAME,
+    password: process.env.DB_PASSWORD,
+    port: process.env.DB_PORT,
+    ssl: { rejectUnauthorized: false } // Requerido por Supabase
+});
+
+pool.connect()
+    .then(() => console.log('✅ Conexión exitosa a PostgreSQL (Supabase)'))
     .catch(err => console.error('❌ Error BD:', err));
 
 const hash = (pwd) => crypto.createHash('sha256').update(pwd).digest('hex');
@@ -32,15 +37,13 @@ app.post('/api/auth/login', async (req, res) => {
     if (!nombre || !apellido || !password)
         return res.status(400).json({ success: false, message: 'Datos incompletos' });
     try {
-        const r = new sql.Request();
-        r.input('nombre',   sql.VarChar(100), nombre.trim());
-        r.input('apellido', sql.VarChar(100), apellido.trim());
-        const result = await r.query(
-            `SELECT * FROM usuarios WHERE nombre = @nombre AND apellido = @apellido`
+        const result = await pool.query(
+            `SELECT * FROM usuarios WHERE nombre = $1 AND apellido = $2`,
+            [nombre.trim(), apellido.trim()]
         );
-        if (!result.recordset.length)
+        if (result.rows.length === 0)
             return res.status(401).json({ success: false, message: 'Usuario no encontrado' });
-        const u = result.recordset[0];
+        const u = result.rows[0];
         if (u.password_hash !== hash(password))
             return res.status(401).json({ success: false, message: 'Contraseña incorrecta' });
         res.json({ success: true, user: { id: u.id, nombre: u.nombre, apellido: u.apellido, rol: u.rol, primer_ingreso: u.primer_ingreso } });
@@ -56,20 +59,18 @@ app.post('/api/auth/activar', async (req, res) => {
     if (!nombre || !apellido || !codigo || !nueva_password)
         return res.status(400).json({ success: false, message: 'Todos los campos son requeridos' });
     try {
-        const r = new sql.Request();
-        r.input('nombre',   sql.VarChar(100), nombre.trim());
-        r.input('apellido', sql.VarChar(100), apellido.trim());
-        r.input('codigo',   sql.VarChar(50),  codigo.trim());
-        const result = await r.query(
-            `SELECT * FROM usuarios WHERE nombre=@nombre AND apellido=@apellido AND codigo_aceptacion=@codigo`
+        const result = await pool.query(
+            `SELECT * FROM usuarios WHERE nombre=$1 AND apellido=$2 AND codigo_aceptacion=$3`,
+            [nombre.trim(), apellido.trim(), codigo.trim()]
         );
-        if (!result.recordset.length)
+        if (result.rows.length === 0)
             return res.status(401).json({ success: false, message: 'Código de aceptación inválido o datos incorrectos' });
-        const u = result.recordset[0];
-        const upd = new sql.Request();
-        upd.input('id',   sql.UniqueIdentifier, u.id);
-        upd.input('hash', sql.VarChar(64),      hash(nueva_password));
-        await upd.query(`UPDATE usuarios SET password_hash=@hash, primer_ingreso=0 WHERE id=@id`);
+        const u = result.rows[0];
+        
+        await pool.query(
+            `UPDATE usuarios SET password_hash=$1, primer_ingreso=false WHERE id=$2`,
+            [hash(nueva_password), u.id]
+        );
         res.json({ success: true, user: { id: u.id, nombre: u.nombre, apellido: u.apellido, rol: u.rol, primer_ingreso: false } });
     } catch (err) {
         console.error(err);
@@ -81,10 +82,10 @@ app.post('/api/auth/activar', async (req, res) => {
 app.post('/api/auth/cambiar-password', async (req, res) => {
     const { usuario_id, nueva_password } = req.body;
     try {
-        const r = new sql.Request();
-        r.input('id',   sql.UniqueIdentifier, usuario_id);
-        r.input('hash', sql.VarChar(64),      hash(nueva_password));
-        await r.query(`UPDATE usuarios SET password_hash=@hash, primer_ingreso=0 WHERE id=@id`);
+        await pool.query(
+            `UPDATE usuarios SET password_hash=$1, primer_ingreso=false WHERE id=$2`,
+            [hash(nueva_password), usuario_id]
+        );
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ success: false, message: 'Error al cambiar contraseña' });
@@ -96,10 +97,10 @@ app.post('/api/auth/cambiar-password', async (req, res) => {
 // ══════════════════════════════════════════════════════════
 app.get('/api/usuarios', async (req, res) => {
     try {
-        const result = await sql.query(
+        const result = await pool.query(
             `SELECT id, nombre, apellido, rol, primer_ingreso, codigo_aceptacion, created_at FROM usuarios ORDER BY nombre`
         );
-        res.json({ success: true, data: result.recordset });
+        res.json({ success: true, data: result.rows });
     } catch (err) {
         res.status(500).json({ success: false, message: 'Error al obtener usuarios' });
     }
@@ -112,19 +113,14 @@ app.post('/api/usuarios', async (req, res) => {
         return res.status(400).json({ success: false, message: 'Nombre y apellido requeridos' });
     try {
         const codigo = Math.floor(100000 + Math.random() * 900000).toString();
-        const r = new sql.Request();
-        r.input('nombre',   sql.VarChar(100), nombre.trim());
-        r.input('apellido', sql.VarChar(100), apellido.trim());
-        r.input('rol',      sql.VarChar(50),  rol || 'conductor');
-        r.input('codigo',   sql.VarChar(50),  codigo);
-        r.input('hash',     sql.VarChar(64),  hash(codigo));
-        const result = await r.query(`
-            INSERT INTO usuarios (id, nombre, apellido, password_hash, rol, codigo_aceptacion, primer_ingreso)
-            OUTPUT INSERTED.id, INSERTED.nombre, INSERTED.apellido, INSERTED.rol,
-                   INSERTED.codigo_aceptacion, INSERTED.primer_ingreso
-            VALUES (NEWID(), @nombre, @apellido, @hash, @rol, @codigo, 1)
-        `);
-        res.status(201).json({ success: true, data: result.recordset[0], codigo });
+        
+        const result = await pool.query(`
+            INSERT INTO usuarios (nombre, apellido, password_hash, rol, codigo_aceptacion, primer_ingreso)
+            VALUES ($1, $2, $3, $4, $5, true)
+            RETURNING id, nombre, apellido, rol, codigo_aceptacion, primer_ingreso
+        `, [nombre.trim(), apellido.trim(), hash(codigo), rol || 'conductor', codigo]);
+        
+        res.status(201).json({ success: true, data: result.rows[0], codigo });
     } catch (err) {
         console.error(err);
         res.status(500).json({ success: false, message: 'Error al crear usuario' });
@@ -133,9 +129,7 @@ app.post('/api/usuarios', async (req, res) => {
 
 app.delete('/api/usuarios/:id', async (req, res) => {
     try {
-        const r = new sql.Request();
-        r.input('id', sql.UniqueIdentifier, req.params.id);
-        await r.query(`DELETE FROM usuarios WHERE id=@id`);
+        await pool.query(`DELETE FROM usuarios WHERE id=$1`, [req.params.id]);
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ success: false, message: 'Error al eliminar' });
@@ -148,17 +142,11 @@ app.put('/api/usuarios/:id', async (req, res) => {
     if (!nombre || !apellido)
         return res.status(400).json({ success: false, message: 'Nombre y apellido requeridos' });
     try {
-        const r = new sql.Request();
-        r.input('id', sql.UniqueIdentifier, req.params.id);
-        r.input('nombre', sql.VarChar(100), nombre.trim());
-        r.input('apellido', sql.VarChar(100), apellido.trim());
-        r.input('rol', sql.VarChar(50), rol || 'conductor');
-        
-        await r.query(`
+        await pool.query(`
             UPDATE usuarios 
-            SET nombre = @nombre, apellido = @apellido, rol = @rol
-            WHERE id = @id
-        `);
+            SET nombre = $1, apellido = $2, rol = $3
+            WHERE id = $4
+        `, [nombre.trim(), apellido.trim(), rol || 'conductor', req.params.id]);
         res.json({ success: true, message: 'Usuario actualizado' });
     } catch (err) {
         console.error(err);
@@ -170,11 +158,10 @@ app.put('/api/usuarios/:id', async (req, res) => {
 app.put('/api/usuarios/:id/reset-password', async (req, res) => {
     const codigo = Math.floor(100000 + Math.random() * 900000).toString();
     try {
-        const r = new sql.Request();
-        r.input('id',     sql.UniqueIdentifier, req.params.id);
-        r.input('codigo', sql.VarChar(50),      codigo);
-        r.input('hash',   sql.VarChar(64),      hash(codigo));
-        await r.query(`UPDATE usuarios SET password_hash=@hash, codigo_aceptacion=@codigo, primer_ingreso=1 WHERE id=@id`);
+        await pool.query(
+            `UPDATE usuarios SET password_hash=$1, codigo_aceptacion=$2, primer_ingreso=true WHERE id=$3`,
+            [hash(codigo), codigo, req.params.id]
+        );
         res.json({ success: true, codigo });
     } catch (err) {
         res.status(500).json({ success: false, message: 'Error' });
@@ -186,8 +173,8 @@ app.put('/api/usuarios/:id/reset-password', async (req, res) => {
 // ══════════════════════════════════════════════════════════
 app.get('/api/vehiculos', async (req, res) => {
     try {
-        const result = await sql.query(`SELECT * FROM vehiculos ORDER BY marca`);
-        res.json({ success: true, data: result.recordset });
+        const result = await pool.query(`SELECT * FROM vehiculos ORDER BY marca`);
+        res.json({ success: true, data: result.rows });
     } catch (err) {
         res.status(500).json({ success: false, message: 'Error' });
     }
@@ -198,16 +185,12 @@ app.post('/api/vehiculos', async (req, res) => {
     if (!placa || !marca)
         return res.status(400).json({ success: false, message: 'Placa y marca requeridos' });
     try {
-        const r = new sql.Request();
-        r.input('placa', sql.VarChar(20),  placa.trim().toUpperCase());
-        r.input('marca', sql.VarChar(100), marca.trim());
-        r.input('km',    sql.Numeric(10,2), Number(ultimo_kilometraje) || 0);
-        const result = await r.query(`
+        const result = await pool.query(`
             INSERT INTO vehiculos (placa, marca, ultimo_kilometraje)
-            OUTPUT INSERTED.*
-            VALUES (@placa, @marca, @km)
-        `);
-        res.status(201).json({ success: true, data: result.recordset[0] });
+            VALUES ($1, $2, $3)
+            RETURNING *
+        `, [placa.trim().toUpperCase(), marca.trim(), Number(ultimo_kilometraje) || 0]);
+        res.status(201).json({ success: true, data: result.rows[0] });
     } catch (err) {
         console.error(err);
         res.status(500).json({ success: false, message: 'Error: ' + err.message });
@@ -216,9 +199,7 @@ app.post('/api/vehiculos', async (req, res) => {
 
 app.delete('/api/vehiculos/:id', async (req, res) => {
     try {
-        const r = new sql.Request();
-        r.input('id', sql.Int, req.params.id);
-        await r.query(`DELETE FROM vehiculos WHERE id=@id`);
+        await pool.query(`DELETE FROM vehiculos WHERE id=$1`, [req.params.id]);
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ success: false, message: 'Error' });
@@ -231,9 +212,9 @@ app.delete('/api/vehiculos/:id', async (req, res) => {
 
 // POST /api/comisiones
 app.post('/api/comisiones', async (req, res) => {
-    const transaction = new sql.Transaction();
+    const client = await pool.connect();
     try {
-        await transaction.begin();
+        await client.query('BEGIN');
         const {
             usuario_id, vehiculo_id, fecha_salida, descripcion_comision,
             lugares, acompanantes, con_nombramiento, no_nombramiento,
@@ -241,53 +222,36 @@ app.post('/api/comisiones', async (req, res) => {
             hora_salida, hora_entrada
         } = req.body;
 
-        const r = new sql.Request(transaction);
-        r.input('usuario_id',           sql.UniqueIdentifier, usuario_id);
-        r.input('vehiculo_id',          sql.Int,              vehiculo_id);
-        r.input('fecha_salida',         sql.Date,             fecha_salida);
-        r.input('descripcion_comision', sql.VarChar(500),     descripcion_comision);
-        r.input('lugares',              sql.VarChar(300),     lugares);
-        r.input('acompanantes',         sql.VarChar(300),     acompanantes ?? null);
-        r.input('con_nombramiento',     sql.Bit,              con_nombramiento ? 1 : 0);
-        r.input('no_nombramiento',      sql.VarChar(50),      con_nombramiento ? (no_nombramiento ?? null) : null);
-        r.input('departamento',         sql.VarChar(100),     departamento);
-        r.input('seccion',              sql.VarChar(100),     seccion);
-        r.input('kilometraje_salida',   sql.Numeric(10,2),    kilometraje_salida);
-        r.input('kilometraje_ingreso',  sql.Numeric(10,2),    kilometraje_ingreso ?? null);
-        r.input('hora_salida',          sql.VarChar(8),       hora_salida);
-        r.input('hora_entrada',         sql.VarChar(8),       hora_entrada ?? null);
-        const totalKm = (kilometraje_ingreso && kilometraje_salida)
-            ? (Number(kilometraje_ingreso) - Number(kilometraje_salida)) : null;
-        r.input('total_km', sql.Numeric(10,2), totalKm);
-
-        const result = await r.query(`
+        const result = await client.query(`
             INSERT INTO bitacora_comisiones (
-                id, usuario_id, vehiculo_id, fecha_salida, descripcion_comision,
+                usuario_id, vehiculo_id, fecha_salida, descripcion_comision,
                 lugares, acompanantes, con_nombramiento, no_nombramiento,
                 departamento, seccion, kilometraje_salida, kilometraje_ingreso,
                 hora_salida, hora_entrada, estado
             )
-            OUTPUT INSERTED.*
             VALUES (
-                NEWID(), @usuario_id, @vehiculo_id, @fecha_salida, @descripcion_comision,
-                @lugares, @acompanantes, @con_nombramiento, @no_nombramiento,
-                @departamento, @seccion, @kilometraje_salida, @kilometraje_ingreso,
-                @hora_salida, @hora_entrada, 'PENDIENTE'
-            )
-        `);
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'PENDIENTE'
+            ) RETURNING *
+        `, [
+            usuario_id, vehiculo_id, fecha_salida, descripcion_comision,
+            lugares, acompanantes ?? null, con_nombramiento ? true : false, 
+            con_nombramiento ? (no_nombramiento ?? null) : null,
+            departamento, seccion, kilometraje_salida, kilometraje_ingreso ?? null,
+            hora_salida, hora_entrada ?? null
+        ]);
 
         if (kilometraje_ingreso) {
-            const u = new sql.Request(transaction);
-            u.input('km',  kilometraje_ingreso);
-            u.input('vid', sql.Int, vehiculo_id);
-            await u.query(`UPDATE vehiculos SET ultimo_kilometraje=@km WHERE id=@vid`);
+            await client.query(`UPDATE vehiculos SET ultimo_kilometraje=$1 WHERE id=$2`, 
+                               [kilometraje_ingreso, vehiculo_id]);
         }
-        await transaction.commit();
-        res.status(201).json({ success: true, data: result.recordset[0] });
+        await client.query('COMMIT');
+        res.status(201).json({ success: true, data: result.rows[0] });
     } catch (error) {
-        await transaction.rollback();
+        await client.query('ROLLBACK');
         console.error(error);
         res.status(500).json({ success: false, message: 'Error: ' + error.message });
+    } finally {
+        client.release();
     }
 });
 
@@ -295,25 +259,24 @@ app.post('/api/comisiones', async (req, res) => {
 app.get('/api/comisiones/semanal', async (req, res) => {
     const { fecha_inicio, fecha_fin } = req.query;
     try {
-        const r = new sql.Request();
-        r.input('fi', sql.Date, fecha_inicio || new Date());
-        r.input('ff', sql.Date, fecha_fin    || new Date());
-        const result = await r.query(`
+        const fi = fecha_inicio || new Date().toISOString().split('T')[0];
+        const ff = fecha_fin || new Date().toISOString().split('T')[0];
+        
+        const result = await pool.query(`
             SELECT b.*, u.nombre, u.apellido, v.marca, v.placa
             FROM bitacora_comisiones b
             JOIN usuarios u ON b.usuario_id=u.id
             JOIN vehiculos v ON b.vehiculo_id=v.id
-            WHERE b.fecha_salida BETWEEN @fi AND @ff
+            WHERE b.fecha_salida BETWEEN $1 AND $2
             ORDER BY b.fecha_salida ASC, b.hora_salida ASC
-        `);
-        res.json({ success: true, data: result.recordset });
+        `, [fi, ff]);
+        res.json({ success: true, data: result.rows });
     } catch (error) {
         res.status(500).json({ success: false, message: 'Error al consultar' });
     }
 });
 
 // ── Generador de PDF reutilizable ────────────────────────
-const fs = require('fs');
 const generarPDF = (registros, titulo, doc) => {
     const fmt = (v) => v instanceof Date ? v.toISOString().substring(11,16) : (v ?? 'Pendiente');
     const fmtFecha = (v) => v instanceof Date ? v.toISOString().split('T')[0] : (typeof v === 'string' ? v.split('T')[0] : String(v ?? ''));
@@ -400,21 +363,19 @@ const generarPDF = (registros, titulo, doc) => {
 app.get('/api/comisiones/pdf-semana', async (req, res) => {
     const { fecha_inicio, fecha_fin } = req.query;
     try {
-        const r = new sql.Request();
-        r.input('fi', sql.Date, fecha_inicio);
-        r.input('ff', sql.Date, fecha_fin);
-        const result = await r.query(`
+        const result = await pool.query(`
             SELECT b.*, u.nombre, u.apellido, v.marca, v.placa
             FROM bitacora_comisiones b
             JOIN usuarios u ON b.usuario_id=u.id JOIN vehiculos v ON b.vehiculo_id=v.id
-            WHERE b.fecha_salida BETWEEN @fi AND @ff ORDER BY b.fecha_salida ASC, b.hora_salida ASC
-        `);
-        if (!result.recordset.length) return res.status(404).send('Sin registros para esa semana');
+            WHERE b.fecha_salida BETWEEN $1 AND $2 ORDER BY b.fecha_salida ASC, b.hora_salida ASC
+        `, [fecha_inicio, fecha_fin]);
+        
+        if (!result.rows.length) return res.status(404).send('Sin registros para esa semana');
         const doc = new PDFDocument({ margin: 40, size: 'A4' });
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename=Semana_${fecha_inicio}_${fecha_fin}.pdf`);
         doc.pipe(res);
-        generarPDF(result.recordset, `Semana: ${fecha_inicio} al ${fecha_fin}`, doc);
+        generarPDF(result.rows, `Semana: ${fecha_inicio} al ${fecha_fin}`, doc);
         doc.end();
     } catch (err) {
         console.error(err);
@@ -426,20 +387,19 @@ app.get('/api/comisiones/pdf-semana', async (req, res) => {
 app.get('/api/comisiones/pdf-dia/:fecha', async (req, res) => {
     const { fecha } = req.params;
     try {
-        const r = new sql.Request();
-        r.input('fecha', sql.Date, fecha);
-        const result = await r.query(`
+        const result = await pool.query(`
             SELECT b.*, u.nombre, u.apellido, v.marca, v.placa
             FROM bitacora_comisiones b
             JOIN usuarios u ON b.usuario_id=u.id JOIN vehiculos v ON b.vehiculo_id=v.id
-            WHERE b.fecha_salida=@fecha ORDER BY b.hora_salida ASC
-        `);
-        if (!result.recordset.length) return res.status(404).send('Sin registros para esa fecha');
+            WHERE b.fecha_salida=$1 ORDER BY b.hora_salida ASC
+        `, [fecha]);
+        
+        if (!result.rows.length) return res.status(404).send('Sin registros para esa fecha');
         const doc = new PDFDocument({ margin: 40, size: 'A4' });
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename=Dia_${fecha}.pdf`);
         doc.pipe(res);
-        generarPDF(result.recordset, `Registros del ${fecha}`, doc);
+        generarPDF(result.rows, `Registros del ${fecha}`, doc);
         doc.end();
     } catch (err) {
         console.error(err);
@@ -450,19 +410,18 @@ app.get('/api/comisiones/pdf-dia/:fecha', async (req, res) => {
 // GET /api/comisiones/:id/pdf — boleta individual
 app.get('/api/comisiones/:id/pdf', async (req, res) => {
     try {
-        const r = new sql.Request();
-        r.input('id', sql.UniqueIdentifier, req.params.id);
-        const result = await r.query(`
+        const result = await pool.query(`
             SELECT b.*, u.nombre, u.apellido, v.marca, v.placa
             FROM bitacora_comisiones b
             JOIN usuarios u ON b.usuario_id=u.id JOIN vehiculos v ON b.vehiculo_id=v.id
-            WHERE b.id=@id
-        `);
-        if (!result.recordset.length) return res.status(404).send('No encontrado');
-        const data = result.recordset[0];
-        const upd = new sql.Request();
-        upd.input('id', sql.UniqueIdentifier, req.params.id);
-        await upd.query(`UPDATE bitacora_comisiones SET estado='DESCARGADO' WHERE id=@id`);
+            WHERE b.id=$1
+        `, [req.params.id]);
+        
+        if (!result.rows.length) return res.status(404).send('No encontrado');
+        const data = result.rows[0];
+        
+        await pool.query(`UPDATE bitacora_comisiones SET estado='DESCARGADO' WHERE id=$1`, [req.params.id]);
+        
         const doc = new PDFDocument({ margin: 40, size: 'A4' });
         const fecha = data.fecha_salida instanceof Date
             ? data.fecha_salida.toISOString().split('T')[0] : String(data.fecha_salida ?? '').split('T')[0];
@@ -481,9 +440,7 @@ app.get('/api/comisiones/:id/pdf', async (req, res) => {
 app.post('/api/admin/cierre-anual', async (req, res) => {
     const { anio } = req.body;
     try {
-        const r = new sql.Request();
-        r.input('anio', sql.Int, anio);
-        const result = await r.query(`
+        const result = await pool.query(`
             SELECT b.fecha_salida, b.hora_salida, b.hora_entrada,
                    CONCAT(u.nombre,' ',u.apellido) AS conductor,
                    v.placa, v.marca, b.departamento, b.seccion,
@@ -491,14 +448,15 @@ app.post('/api/admin/cierre-anual', async (req, res) => {
                    b.kilometraje_salida, b.kilometraje_ingreso, b.total_kilometros
             FROM bitacora_comisiones b
             JOIN usuarios u ON b.usuario_id=u.id JOIN vehiculos v ON b.vehiculo_id=v.id
-            WHERE YEAR(b.fecha_salida)=@anio ORDER BY b.fecha_salida ASC
-        `);
-        if (!result.recordset.length)
+            WHERE EXTRACT(YEAR FROM b.fecha_salida) = $1 ORDER BY b.fecha_salida ASC
+        `, [anio]);
+        
+        if (!result.rows.length)
             return res.status(400).json({ success: false, message: 'Sin registros para ese año' });
-        const csv = new Parser().parse(result.recordset);
-        const del = new sql.Request();
-        del.input('anio', sql.Int, anio);
-        await del.query(`DELETE FROM bitacora_comisiones WHERE YEAR(fecha_salida)=@anio`);
+        
+        const csv = new Parser().parse(result.rows);
+        await pool.query(`DELETE FROM bitacora_comisiones WHERE EXTRACT(YEAR FROM fecha_salida)=$1`, [anio]);
+        
         res.setHeader('Content-Type', 'text/csv');
         res.setHeader('Content-Disposition', `attachment; filename=Respaldo_${anio}.csv`);
         res.send(csv);
@@ -509,8 +467,8 @@ app.post('/api/admin/cierre-anual', async (req, res) => {
 
 app.get('/test-db', async (req, res) => {
     try {
-        const r = await sql.query('SELECT @@VERSION AS v, GETDATE() AS t');
-        res.json({ status: 'OK', datos: r.recordset });
+        const result = await pool.query('SELECT version() AS v, NOW() AS t');
+        res.json({ status: 'OK', datos: result.rows });
     } catch (err) {
         res.status(500).json({ status: 'Error', detalle: err.message });
     }
