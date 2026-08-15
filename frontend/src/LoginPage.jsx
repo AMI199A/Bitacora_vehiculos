@@ -13,7 +13,7 @@ export default function LoginPage({ onLogin }) {
   const handleLogin = async (e) => {
     e.preventDefault(); setError(''); setLoading(true);
     try {
-      const res  = await fetch('/api/auth/login', {
+      const res  = await fetch('https://bitacora-vehiculos-6o20.onrender.com/api/auth/login', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(login)
       });
@@ -30,7 +30,7 @@ export default function LoginPage({ onLogin }) {
     if (act.nueva_password.length < 6) { setError('La contraseña debe tener mínimo 6 caracteres'); return; }
     setLoading(true);
     try {
-      const res  = await fetch('/api/auth/activar', {
+      const res  = await fetch('https://bitacora-vehiculos-6o20.onrender.com/api/auth/activar', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nombre: act.nombre, apellido: act.apellido, codigo: act.codigo, nueva_password: act.nueva_password })
       });

@@ -5,7 +5,7 @@ export const BitacoraPanel = () => {
     const [anioCierre, setAnioCierre] = useState('2026');
 
     const cargarSemana = async () => {
-        const res = await fetch('/api/comisiones/semanal?fecha_inicio=2026-08-10&fecha_fin=2026-08-14');
+        const res = await fetch('https://bitacora-vehiculos-6o20.onrender.com/api/comisiones/semanal?fecha_inicio=2026-08-10&fecha_fin=2026-08-14');
         const data = await res.json();
         if (data.success) setComisiones(data.data);
     };
@@ -15,7 +15,7 @@ export const BitacoraPanel = () => {
     }, []);
 
     const descargarPDF = (id) => {
-        window.open(`/api/comisiones/${id}/pdf`, '_blank');
+        window.open(`https://bitacora-vehiculos-6o20.onrender.com/api/comisiones/${id}/pdf`, '_blank');
         // Cambiar inmediatamente a verde en la vista local
         setComisiones(prev =>
             prev.map(c => c.id === id ? { ...c, estado: 'DESCARGADO' } : c)
@@ -25,7 +25,7 @@ export const BitacoraPanel = () => {
     const ejecutarCierreAnual = async () => {
         if (!window.confirm(`¿Confirmas realizar el cierre anual del año ${anioCierre}? Se descargará el respaldo y se limpiará la base de datos.`)) return;
 
-        const response = await fetch('/api/admin/cierre-anual', {
+        const response = await fetch('https://bitacora-vehiculos-6o20.onrender.com/api/admin/cierre-anual', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ anio: anioCierre })

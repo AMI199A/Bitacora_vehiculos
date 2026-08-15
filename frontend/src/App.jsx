@@ -37,7 +37,7 @@ export default function App() {
   const submitPwd = async (e) => {
     e.preventDefault(); setPwdErr('');
     if (newPwd.length < 6) { setPwdErr('Mínimo 6 caracteres'); return; }
-    const res = await fetch('/api/auth/cambiar-password', {
+    const res = await fetch('https://bitacora-vehiculos-6o20.onrender.com/api/auth/cambiar-password', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ usuario_id: user.id, nueva_password: newPwd })
     });

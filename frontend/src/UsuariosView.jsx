@@ -10,7 +10,7 @@ export default function UsuariosView() {
   const [error,   setError]   = useState('');
 
   const cargar = () =>
-    fetch('/api/usuarios').then(r=>r.json()).then(d => { if (d.success) setUsuarios(d.data); });
+    fetch('https://bitacora-vehiculos-6o20.onrender.com/api/usuarios').then(r=>r.json()).then(d => { if (d.success) setUsuarios(d.data); });
 
   useEffect(()=>{ cargar(); },[]);
   const handle = e => setForm(p=>({...p,[e.target.name]:e.target.value}));
@@ -30,7 +30,7 @@ export default function UsuariosView() {
   const guardarUsuario = async (e) => {
     e.preventDefault(); setError(''); setLoading(true);
     try {
-      const url = editingId ? `/api/usuarios/${editingId}` : '/api/usuarios';
+      const url = editingId ? `https://bitacora-vehiculos-6o20.onrender.com/api/usuarios/${editingId}` : 'https://bitacora-vehiculos-6o20.onrender.com/api/usuarios';
       const method = editingId ? 'PUT' : 'POST';
       const res  = await fetch(url, {
         method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(form)
@@ -53,13 +53,13 @@ export default function UsuariosView() {
 
   const eliminar = async (id, nombre) => {
     if (!window.confirm(`¿Eliminar al usuario ${nombre}?`)) return;
-    await fetch(`/api/usuarios/${id}`,{method:'DELETE'});
+    await fetch(`https://bitacora-vehiculos-6o20.onrender.com/api/usuarios/${id}`,{method:'DELETE'});
     cargar();
   };
 
   const resetPassword = async (id, nombre) => {
     if (!window.confirm(`¿Resetear la contraseña de ${nombre}?\nSe generará un nuevo código de aceptación.`)) return;
-    const res  = await fetch(`/api/usuarios/${id}/reset-password`,{method:'PUT'});
+    const res  = await fetch(`https://bitacora-vehiculos-6o20.onrender.com/api/usuarios/${id}/reset-password`,{method:'PUT'});
     const data = await res.json();
     if (data.success) {
       setCodigoModal({ nombre, apellido:'', codigo: data.codigo, esReset: true });

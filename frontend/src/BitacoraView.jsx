@@ -22,7 +22,7 @@ export default function BitacoraView({ userRol }) {
   const cargar = async () => {
     setLoading(true);
     try {
-      const res  = await fetch(`/api/comisiones/semanal?fecha_inicio=${fi}&fecha_fin=${ff}`);
+      const res  = await fetch(`https://bitacora-vehiculos-6o20.onrender.com/api/comisiones/semanal?fecha_inicio=${fi}&fecha_fin=${ff}`);
       const data = await res.json();
       if (data.success) setComisiones(data.data);
     } finally { setLoading(false); }
@@ -46,16 +46,16 @@ export default function BitacoraView({ userRol }) {
   const diasSemana = Array.from({length:5},(_,i) => fmtDate(addDays(monday,i)));
 
   const descargarPDF = async (id) => {
-    window.open(`/api/comisiones/${id}/pdf`, '_blank');
+    window.open(`https://bitacora-vehiculos-6o20.onrender.com/api/comisiones/${id}/pdf`, '_blank');
     setComisiones(prev => prev.map(c => c.id===id ? {...c, estado:'DESCARGADO'} : c));
   };
 
-  const descargaPDFDia = (fecha) => window.open(`/api/comisiones/pdf-dia/${fecha}`, '_blank');
-  const descargaPDFSemana = () => window.open(`/api/comisiones/pdf-semana?fecha_inicio=${fi}&fecha_fin=${ff}`, '_blank');
+  const descargaPDFDia = (fecha) => window.open(`https://bitacora-vehiculos-6o20.onrender.com/api/comisiones/pdf-dia/${fecha}`, '_blank');
+  const descargaPDFSemana = () => window.open(`https://bitacora-vehiculos-6o20.onrender.com/api/comisiones/pdf-semana?fecha_inicio=${fi}&fecha_fin=${ff}`, '_blank');
 
   const cierreAnual = async () => {
     if (!window.confirm(`¿Confirmar cierre anual ${anioCierre}?\nSe exportará CSV y se eliminarán los registros de ese año.`)) return;
-    const r = await fetch('/api/admin/cierre-anual', {
+    const r = await fetch('https://bitacora-vehiculos-6o20.onrender.com/api/admin/cierre-anual', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ anio: Number(anioCierre) })
     });

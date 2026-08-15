@@ -22,8 +22,8 @@ export default function RegistrarComision({ currentUser }) {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/usuarios').then(r=>r.json()),
-      fetch('/api/vehiculos').then(r=>r.json()),
+      fetch('https://bitacora-vehiculos-6o20.onrender.com/api/usuarios').then(r=>r.json()),
+      fetch('https://bitacora-vehiculos-6o20.onrender.com/api/vehiculos').then(r=>r.json()),
     ]).then(([u,v]) => {
       if (u.success) setUsuarios(u.data);
       if (v.success) setVehiculos(v.data);
@@ -46,7 +46,7 @@ export default function RegistrarComision({ currentUser }) {
         kilometraje_salida:  form.kilometraje_salida  ? Number(form.kilometraje_salida)  : null,
         kilometraje_ingreso: form.kilometraje_ingreso ? Number(form.kilometraje_ingreso) : null,
       };
-      const res  = await fetch('/api/comisiones', {
+      const res  = await fetch('https://bitacora-vehiculos-6o20.onrender.com/api/comisiones', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify(payload)
       });

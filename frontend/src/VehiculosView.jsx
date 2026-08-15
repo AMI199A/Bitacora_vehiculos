@@ -8,7 +8,7 @@ export default function VehiculosView() {
   const [error,   setError]   = useState('');
 
   const cargar = () =>
-    fetch('/api/vehiculos').then(r => r.json()).then(d => { if (d.success) setVehiculos(d.data); });
+    fetch('https://bitacora-vehiculos-6o20.onrender.com/api/vehiculos').then(r => r.json()).then(d => { if (d.success) setVehiculos(d.data); });
 
   useEffect(() => { cargar(); }, []);
 
@@ -17,7 +17,7 @@ export default function VehiculosView() {
   const crear = async (e) => {
     e.preventDefault(); setError(''); setLoading(true);
     try {
-      const res  = await fetch('/api/vehiculos', {
+      const res  = await fetch('https://bitacora-vehiculos-6o20.onrender.com/api/vehiculos', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ ...form, ultimo_kilometraje: Number(form.ultimo_kilometraje) || 0 })
       });
@@ -32,7 +32,7 @@ export default function VehiculosView() {
 
   const eliminar = async (id, placa) => {
     if (!window.confirm(`¿Eliminar el vehículo ${placa}?`)) return;
-    await fetch(`/api/vehiculos/${id}`, { method:'DELETE' });
+    await fetch(`https://bitacora-vehiculos-6o20.onrender.com/api/vehiculos/${id}`, { method:'DELETE' });
     cargar();
   };
 
