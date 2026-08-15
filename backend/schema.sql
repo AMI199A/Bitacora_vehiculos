@@ -1,0 +1,44 @@
+-- ===========================================
+-- SCHEMA REAL: Bitácora de Vehículos
+-- Base de datos: bd_bitacora
+-- (Documentación del schema existente)
+-- ===========================================
+
+-- TABLA: usuarios
+-- id: uniqueidentifier (GUID)
+-- nombre, apellido: varchar NOT NULL
+-- password_hash: varchar NOT NULL
+-- rol: varchar (ej: 'admin', 'conductor')
+-- codigo_aceptacion: varchar
+-- primer_ingreso: bit
+-- created_at: datetime
+
+-- TABLA: vehiculos
+-- id: int NOT NULL
+-- placa: varchar NOT NULL
+-- marca: varchar NOT NULL
+-- ultimo_kilometraje: numeric
+
+-- TABLA: bitacora_comisiones
+-- id: uniqueidentifier (GUID)
+-- usuario_id: uniqueidentifier -> usuarios.id
+-- vehiculo_id: int -> vehiculos.id
+-- fecha_salida: date NOT NULL
+-- descripcion_comision: varchar
+-- lugares: varchar
+-- acompanantes: varchar
+-- con_nombramiento: bit
+-- no_nombramiento: varchar
+-- departamento: varchar
+-- seccion: varchar
+-- kilometraje_salida: numeric NOT NULL
+-- kilometraje_ingreso: numeric
+-- hora_salida: time NOT NULL
+-- hora_entrada: time
+-- total_kilometros: numeric  (se debe actualizar manualmente)
+-- estado: varchar ('PENDIENTE' | 'DESCARGADO')
+-- created_at: datetime
+
+-- Para insertar datos de prueba en vehiculos si no existen:
+-- INSERT INTO vehiculos (id, placa, marca, ultimo_kilometraje) VALUES (1, 'P-123ABC', 'Toyota Hilux', 45000);
+-- INSERT INTO vehiculos (id, placa, marca, ultimo_kilometraje) VALUES (2, 'P-456DEF', 'Mitsubishi L200', 78000);
