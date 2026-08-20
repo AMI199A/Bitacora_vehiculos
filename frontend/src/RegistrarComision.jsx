@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 
+const API = 'https://bitacora-vehiculos-6o20.onrender.com';
+
 export default function RegistrarComision({ currentUser }) {
   const [usuarios,  setUsuarios]  = useState([]);
   const [vehiculos, setVehiculos] = useState([]);
@@ -15,20 +17,39 @@ export default function RegistrarComision({ currentUser }) {
     hora_salida: '', hora_entrada: '',
     descripcion_comision: '', lugares: '', acompanantes: '',
     con_nombramiento: false, no_nombramiento: '',
-    departamento: '', seccion: '',
+    seccion: '',
     kilometraje_salida: '', kilometraje_ingreso: '',
   };
   const [form, setForm] = useState(blank);
 
   useEffect(() => {
     Promise.all([
-      fetch('https://bitacora-vehiculos-6o20.onrender.com/api/usuarios').then(r=>r.json()),
-      fetch('https://bitacora-vehiculos-6o20.onrender.com/api/vehiculos').then(r=>r.json()),
+      fetch(`${API}/api/usuarios`).then(r=>r.json()),
+      fetch(`${API}/api/vehiculos`).then(r=>r.json()),
     ]).then(([u,v]) => {
       if (u.success) setUsuarios(u.data);
       if (v.success) setVehiculos(v.data);
     });
   }, []);
+
+  // Autocompletar kilometraje de salida y descripción al cambiar vehículo
+  const handleVehiculo = async (e) => {
+    const vid = e.target.value;
+    setForm(p => ({ ...p, vehiculo_id: vid, kilometraje_salida: '', descripcion_comision: '' }));
+    if (!vid) return;
+    try {
+      const res  = await fetch(`${API}/api/comisiones/ultima/${vid}`);
+      const data = await res.json();
+      if (data.success && data.data) {
+        setForm(p => ({
+          ...p,
+          vehiculo_id: vid,
+          kilometraje_salida: data.data.kilometraje_ingreso ?? '',
+          descripcion_comision: data.data.descripcion_comision ?? '',
+        }));
+      }
+    } catch {/* sin última comisión, dejar vacío */}
+  };
 
   const handle = (e) => {
     const { name, value, type, checked } = e.target;
@@ -46,7 +67,7 @@ export default function RegistrarComision({ currentUser }) {
         kilometraje_salida:  form.kilometraje_salida  ? Number(form.kilometraje_salida)  : null,
         kilometraje_ingreso: form.kilometraje_ingreso ? Number(form.kilometraje_ingreso) : null,
       };
-      const res  = await fetch('https://bitacora-vehiculos-6o20.onrender.com/api/comisiones', {
+      const res  = await fetch(`${API}/api/comisiones`, {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify(payload)
       });
@@ -96,7 +117,7 @@ export default function RegistrarComision({ currentUser }) {
               </div>
               <div className="form-group">
                 <label>Vehículo *</label>
-                <select name="vehiculo_id" className="form-control" value={form.vehiculo_id} onChange={handle} required>
+                <select name="vehiculo_id" className="form-control" value={form.vehiculo_id} onChange={handleVehiculo} required>
                   <option value="">— Seleccionar —</option>
                   {vehiculos.map(v => <option key={v.id} value={v.id}>{v.marca} — {v.placa}</option>)}
                 </select>
@@ -131,7 +152,14 @@ export default function RegistrarComision({ currentUser }) {
             </p>
             <div className="form-grid mb-4">
               <div className="form-group full">
-                <label>Descripción de la comisión / actividad a realizar *</label>
+                <label>
+                  Descripción de la comisión / actividad a realizar *
+                  {form.vehiculo_id && (
+                    <span style={{fontSize:10,color:'var(--accent-2)',marginLeft:8,fontWeight:400}}>
+                      💡 Autocompletado del mismo vehículo — puedes modificarlo
+                    </span>
+                  )}
+                </label>
                 <input name="descripcion_comision" className="form-control"
                   placeholder="Describe el motivo o actividad de la comisión"
                   value={form.descripcion_comision} onChange={handle} required />
@@ -176,15 +204,9 @@ export default function RegistrarComision({ currentUser }) {
               )}
             </div>
 
-            {/* SECCIÓN 5: Departamento / Sección */}
+            {/* SECCIÓN 5: Sección */}
             <div className="form-grid mb-4">
-              <div className="form-group">
-                <label>Departamento *</label>
-                <input name="departamento" className="form-control"
-                  placeholder="Ej. Operaciones"
-                  value={form.departamento} onChange={handle} required />
-              </div>
-              <div className="form-group">
+              <div className="form-group full">
                 <label>Sección *</label>
                 <input name="seccion" className="form-control"
                   placeholder="Ej. Fiscalización"
@@ -198,7 +220,14 @@ export default function RegistrarComision({ currentUser }) {
             </p>
             <div className="form-grid mb-4">
               <div className="form-group">
-                <label>Kilometraje de salida *</label>
+                <label>
+                  Kilometraje de salida *
+                  {form.kilometraje_salida && (
+                    <span style={{fontSize:10,color:'var(--accent-2)',marginLeft:8,fontWeight:400}}>
+                      🔄 Autocompletado desde última comisión
+                    </span>
+                  )}
+                </label>
                 <input name="kilometraje_salida" type="number" min="0" className="form-control"
                   placeholder="Km al momento de salir"
                   value={form.kilometraje_salida} onChange={handle} required />

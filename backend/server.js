@@ -210,6 +210,22 @@ app.delete('/api/vehiculos/:id', async (req, res) => {
 //  COMISIONES
 // ══════════════════════════════════════════════════════════
 
+// GET /api/comisiones/ultima/:vehiculo_id — última comisión de un vehículo
+app.get('/api/comisiones/ultima/:vehiculo_id', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT descripcion_comision, kilometraje_ingreso
+            FROM bitacora_comisiones
+            WHERE vehiculo_id = $1
+            ORDER BY fecha_salida DESC, hora_salida DESC
+            LIMIT 1
+        `, [req.params.vehiculo_id]);
+        res.json({ success: true, data: result.rows[0] || null });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Error: ' + err.message });
+    }
+});
+
 // POST /api/comisiones
 app.post('/api/comisiones', async (req, res) => {
     const client = await pool.connect();
@@ -218,7 +234,7 @@ app.post('/api/comisiones', async (req, res) => {
         const {
             usuario_id, vehiculo_id, fecha_salida, descripcion_comision,
             lugares, acompanantes, con_nombramiento, no_nombramiento,
-            departamento, seccion, kilometraje_salida, kilometraje_ingreso,
+            seccion, kilometraje_salida, kilometraje_ingreso,
             hora_salida, hora_entrada
         } = req.body;
 
@@ -226,17 +242,17 @@ app.post('/api/comisiones', async (req, res) => {
             INSERT INTO bitacora_comisiones (
                 usuario_id, vehiculo_id, fecha_salida, descripcion_comision,
                 lugares, acompanantes, con_nombramiento, no_nombramiento,
-                departamento, seccion, kilometraje_salida, kilometraje_ingreso,
+                seccion, kilometraje_salida, kilometraje_ingreso,
                 hora_salida, hora_entrada, estado
             )
             VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'PENDIENTE'
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'PENDIENTE'
             ) RETURNING *
         `, [
             usuario_id, vehiculo_id, fecha_salida, descripcion_comision,
             lugares, acompanantes ?? null, con_nombramiento ? true : false, 
             con_nombramiento ? (no_nombramiento ?? null) : null,
-            departamento, seccion, kilometraje_salida, kilometraje_ingreso ?? null,
+            seccion, kilometraje_salida, kilometraje_ingreso ?? null,
             hora_salida, hora_entrada ?? null
         ]);
 
@@ -246,6 +262,65 @@ app.post('/api/comisiones', async (req, res) => {
         }
         await client.query('COMMIT');
         res.status(201).json({ success: true, data: result.rows[0] });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error(error);
+        res.status(500).json({ success: false, message: 'Error: ' + error.message });
+    } finally {
+        client.release();
+    }
+});
+
+// DELETE /api/comisiones/:id
+app.delete('/api/comisiones/:id', async (req, res) => {
+    try {
+        const result = await pool.query(`DELETE FROM bitacora_comisiones WHERE id=$1 RETURNING id`, [req.params.id]);
+        if (result.rowCount === 0)
+            return res.status(404).json({ success: false, message: 'Registro no encontrado' });
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Error al eliminar: ' + err.message });
+    }
+});
+
+// PUT /api/comisiones/:id
+app.put('/api/comisiones/:id', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const {
+            usuario_id, vehiculo_id, fecha_salida, descripcion_comision,
+            lugares, acompanantes, con_nombramiento, no_nombramiento,
+            seccion, kilometraje_salida, kilometraje_ingreso,
+            hora_salida, hora_entrada
+        } = req.body;
+
+        const result = await client.query(`
+            UPDATE bitacora_comisiones SET
+                usuario_id=$1, vehiculo_id=$2, fecha_salida=$3, descripcion_comision=$4,
+                lugares=$5, acompanantes=$6, con_nombramiento=$7, no_nombramiento=$8,
+                seccion=$9, kilometraje_salida=$10, kilometraje_ingreso=$11,
+                hora_salida=$12, hora_entrada=$13
+            WHERE id=$14 RETURNING *
+        `, [
+            usuario_id, vehiculo_id, fecha_salida, descripcion_comision,
+            lugares, acompanantes ?? null, con_nombramiento ? true : false,
+            con_nombramiento ? (no_nombramiento ?? null) : null,
+            seccion, kilometraje_salida, kilometraje_ingreso ?? null,
+            hora_salida, hora_entrada ?? null,
+            req.params.id
+        ]);
+
+        if (result.rowCount === 0)
+            return res.status(404).json({ success: false, message: 'Registro no encontrado' });
+
+        if (kilometraje_ingreso) {
+            await client.query(`UPDATE vehiculos SET ultimo_kilometraje=$1 WHERE id=$2`,
+                               [kilometraje_ingreso, vehiculo_id]);
+        }
+        await client.query('COMMIT');
+        res.json({ success: true, data: result.rows[0] });
     } catch (error) {
         await client.query('ROLLBACK');
         console.error(error);
@@ -321,7 +396,6 @@ const generarPDF = (registros, titulo, doc) => {
         row('Fecha',        fmtFecha(data.fecha_salida));
         row('Vehículo',     `${data.marca}  —  Placa: ${data.placa}`);
         row('Conductor',    `${data.nombre} ${data.apellido}`);
-        row('Departamento', data.departamento);
         row('Sección',      data.seccion);
         
         doc.moveDown(1);
