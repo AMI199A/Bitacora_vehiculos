@@ -1,10 +1,42 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import './index.css';
 import LoginPage from './LoginPage';
 import BitacoraView from './BitacoraView';
 import RegistrarComision from './RegistrarComision';
 import UsuariosView from './UsuariosView';
 import VehiculosView from './VehiculosView';
+
+// ── Sesión persistente ────────────────────────────────────────
+const SESSION_KEY    = 'bv_session';
+const TIMEOUT_MS     = 10 * 60 * 1000; // 10 minutos de inactividad
+
+const saveSession = (user) => {
+  localStorage.setItem(SESSION_KEY, JSON.stringify({ user, lastActivity: Date.now() }));
+};
+
+const loadSession = () => {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const { user, lastActivity } = JSON.parse(raw);
+    if (Date.now() - lastActivity > TIMEOUT_MS) {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+    return user;
+  } catch { return null; }
+};
+
+const clearSession = () => localStorage.removeItem(SESSION_KEY);
+const touchSession  = () => {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    parsed.lastActivity = Date.now();
+    localStorage.setItem(SESSION_KEY, JSON.stringify(parsed));
+  } catch {}
+};
 
 const NAV = [
   { id: 'bitacora', icon: '📊', label: 'Bitácora semanal', section: 'main' },
@@ -21,16 +53,49 @@ const PAGE_TITLES = {
 };
 
 export default function App() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(loadSession);
   const [page, setPage] = useState('bitacora');
   const [changePwd, setChangePwd] = useState(false);
   const [newPwd, setNewPwd] = useState('');
   const [pwdErr, setPwdErr] = useState('');
 
+  // ── Temporizador de inactividad ──
+  useEffect(() => {
+    if (!user) return;
+
+    // Actualiza la sesión con cada interacción
+    const handleActivity = () => touchSession();
+    window.addEventListener('mousemove', handleActivity);
+    window.addEventListener('keydown', handleActivity);
+    window.addEventListener('click', handleActivity);
+    window.addEventListener('scroll', handleActivity);
+
+    // Verifica la inactividad cada minuto
+    const interval = setInterval(() => {
+      if (!loadSession()) {
+        setUser(null);
+      }
+    }, 60000);
+
+    return () => {
+      window.removeEventListener('mousemove', handleActivity);
+      window.removeEventListener('keydown', handleActivity);
+      window.removeEventListener('click', handleActivity);
+      window.removeEventListener('scroll', handleActivity);
+      clearInterval(interval);
+    };
+  }, [user]);
+
   /* ── Login ── */
   const handleLogin = (u) => {
     setUser(u);
+    saveSession(u);
     if (u.primer_ingreso) setChangePwd(true);
+  };
+  
+  const handleLogout = () => {
+    setUser(null);
+    clearSession();
   };
 
   /* ── Cambiar contraseña en primer ingreso ── */
@@ -115,7 +180,7 @@ export default function App() {
               <p className="user-role">{user.rol}</p>
             </div>
           </div>
-          <button className="btn-logout" onClick={() => setUser(null)}>Cerrar sesión</button>
+          <button className="btn-logout" onClick={handleLogout}>Cerrar sesión</button>
         </div>
       </aside>
 
