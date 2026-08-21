@@ -714,24 +714,19 @@ app.get('/api/reportes/kilometraje-excel', async (req, res) => {
             ws.mergeCells(r + 1, col_v1 + 1, r + 1, col_v2);
             ws.getCell(r + 1, col_v1 + 1).border = { bottom: thin };
 
-            // Nombre
+            // Nombre (izquierda)
             ws.getRow(r + 2).height = 14;
             ws.mergeCells(r + 2, col_c1, r + 2, col_c2);
             ws.getCell(r + 2, col_c1).value = nombre || '';
             ws.getCell(r + 2, col_c1).alignment = { horizontal: 'center' };
             ws.getCell(r + 2, col_c1).font = { size: 9, italic: true };
-            ws.mergeCells(r + 2, col_v1 + 1, r + 2, col_v2);
-            ws.getCell(r + 2, col_v1 + 1).value = '';
-            ws.getCell(r + 2, col_v1 + 1).alignment = { horizontal: 'center' };
 
-            // Cargo
+            // Cargo (izquierda)
             ws.getRow(r + 3).height = 14;
             ws.mergeCells(r + 3, col_c1, r + 3, col_c2);
             ws.getCell(r + 3, col_c1).value = cargo || '';
             ws.getCell(r + 3, col_c1).alignment = { horizontal: 'center' };
             ws.getCell(r + 3, col_c1).font = { size: 9 };
-            ws.mergeCells(r + 3, col_v1 + 1, r + 3, col_v2);
-            ws.getCell(r + 3, col_v1 + 1).value = '';
         };
 
         // Elaborado por (izquierda) | Vo. Bo. 1 (derecha)
