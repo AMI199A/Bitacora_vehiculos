@@ -417,6 +417,7 @@ const fmtExcelFecha = (v) => {
 app.get('/api/reportes/kilometraje-excel', async (req, res) => {
     const {
         fecha_inicio, fecha_fin,
+        ids             = '',
         observaciones   = '',
         elaborado_nombre = '', elaborado_cargo   = '',
         vobo1_nombre    = '', vobo1_cargo       = '',
@@ -439,6 +440,11 @@ app.get('/api/reportes/kilometraje-excel', async (req, res) => {
               AND COALESCE(b.fecha_entrada, b.fecha_salida) >= $1
             ORDER BY b.fecha_salida ASC, b.hora_salida ASC
         `, [fecha_inicio, fecha_fin]);
+
+        if (ids) {
+            const idsArray = ids.split(',');
+            result.rows = result.rows.filter(r => idsArray.includes(r.id));
+        }
 
         const comisiones = await cargarMovimientosParaComisiones(result.rows);
 

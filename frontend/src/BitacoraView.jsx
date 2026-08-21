@@ -240,6 +240,7 @@ function ReporteTab() {
   const [obs, setObs] = useState('');
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState(null);
+  const [selectedIds, setSelectedIds] = useState(new Set());
   const [error,   setError]   = useState('');
 
   // Firma 1 (Elaborado por)
@@ -263,6 +264,7 @@ function ReporteTab() {
       vobo1_nombre: v1Nombre, vobo1_cargo: v1Cargo,
       encargada_nombre: encNombre, encargada_cargo: encCargo,
       vobo2_nombre: v2Nombre, vobo2_cargo: v2Cargo,
+      ids: Array.from(selectedIds).join(','),
     });
     return `${API}/api/reportes/kilometraje-excel?${p.toString()}`;
   };
@@ -273,7 +275,10 @@ function ReporteTab() {
     try {
       const res  = await fetch(`${API}/api/comisiones/semanal?fecha_inicio=${fi}&fecha_fin=${ff}`);
       const data = await res.json();
-      if (data.success) setPreview(data.data);
+      if (data.success) {
+        setPreview(data.data);
+        setSelectedIds(new Set(data.data.map(i => i.id)));
+      }
       else throw new Error(data.message);
     } catch (e) {
       setError(e.message);
@@ -292,7 +297,8 @@ function ReporteTab() {
   };
 
   // Calcular resumen del preview
-  const totalKmPreview = preview?.reduce((s, c) => s + (Number(c.total_kilometros) || 0), 0) || 0;
+  const previewSelected = preview?.filter(c => selectedIds.has(c.id)) || [];
+  const totalKmPreview = previewSelected.reduce((s, c) => s + (Number(c.total_kilometros) || 0), 0) || 0;
 
   return (
     <div style={{ padding: 20 }}>
@@ -398,7 +404,7 @@ function ReporteTab() {
         <div className="card">
           <div className="card-header">
             <span style={{ fontWeight: 600 }}>
-              Vista previa — {preview.length} comisión{preview.length !== 1 ? 'es' : ''} del {fmtFechaLegible(fi)} al {fmtFechaLegible(ff)}
+              Vista previa — {previewSelected.length} de {preview.length} comisión{preview.length !== 1 ? 'es' : ''} seleccionada{previewSelected.length !== 1 ? 's' : ''} ({fmtFechaLegible(fi)} al {fmtFechaLegible(ff)})
             </span>
             <span style={{ fontSize: 13, color: 'var(--accent-2)', fontWeight: 700 }}>
               Total: {totalKmPreview.toFixed(0)} km
@@ -413,6 +419,14 @@ function ReporteTab() {
               <table>
                 <thead>
                   <tr>
+                    <th style={{ width: 40, textAlign: 'center' }}>
+                      <input type="checkbox"
+                        checked={selectedIds.size === preview.length && preview.length > 0}
+                        onChange={e => {
+                          if (e.target.checked) setSelectedIds(new Set(preview.map(i => i.id)));
+                          else setSelectedIds(new Set());
+                        }} />
+                    </th>
                     <th>Fecha</th>
                     <th>Conductor</th>
                     <th>Vehículo</th>
@@ -430,7 +444,15 @@ function ReporteTab() {
                     const fechaStr = fE && fE !== fS ? `${fmtFechaLegible(fS)} → ${fmtFechaLegible(fE)}` : fmtFechaLegible(fS);
                     const movs = item.movimientos || [];
                     return (
-                      <tr key={item.id}>
+                      <tr key={item.id} style={{ opacity: selectedIds.has(item.id) ? 1 : 0.4 }}>
+                        <td style={{ textAlign: 'center' }}>
+                          <input type="checkbox" checked={selectedIds.has(item.id)}
+                            onChange={e => {
+                              const next = new Set(selectedIds);
+                              if (e.target.checked) next.add(item.id); else next.delete(item.id);
+                              setSelectedIds(next);
+                            }} />
+                        </td>
                         <td style={{ whiteSpace: 'nowrap', fontSize: 12 }}>{fechaStr}</td>
                         <td>{item.nombre} {item.apellido}</td>
                         <td>
