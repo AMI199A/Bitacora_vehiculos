@@ -675,7 +675,7 @@ export default function BitacoraView({ userRol, userId }) {
                   <th>Fecha</th><th>Conductor</th><th>Vehículo</th>
                   <th>Descripción / Paradas</th><th>KM Sal.</th><th>KM Ing.</th>
                   <th>Total</th><th>Nom.</th><th>Estado</th>
-                  {isAdminOrAnalista && <th>Acciones</th>}
+                  <th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -711,7 +711,7 @@ export default function BitacoraView({ userRol, userId }) {
                         }
                       </td>
                       <td><span className={`badge ${esVerde ? 'badge-done' : 'badge-pending'}`}>{esVerde ? '✅ OK' : '🔴 Pend.'}</span></td>
-                      {isAdminOrAnalista && <td><AccionesBoleta item={item} /></td>}
+                      <td><AccionesBoleta item={item} /></td>
                     </tr>
                   );
                 })}
@@ -786,7 +786,7 @@ export default function BitacoraView({ userRol, userId }) {
                                 {item.fecha_entrada && toDateStr(item.fecha_entrada) !== toDateStr(item.fecha_salida) && (
                                   <span style={{ fontSize: 10, color: 'var(--accent-2)', fontWeight: 600 }}>📅 Varios días</span>
                                 )}
-                                {isAdminOrAnalista && <AccionesBoleta item={item} />}
+                                <AccionesBoleta item={item} />
                               </div>
                             </div>
 
