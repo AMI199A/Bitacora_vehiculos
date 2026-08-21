@@ -128,7 +128,7 @@ export default function App() {
           </div>
         </div>
         <div className="page-body">
-          {page === 'bitacora' && <BitacoraView userRol={user?.rol} />}
+          {page === 'bitacora' && <BitacoraView userRol={user?.rol} userId={user?.id} />}
           {page === 'registrar' && <RegistrarComision currentUser={user} />}
           {page === 'usuarios' && <UsuariosView />}
           {page === 'vehiculos' && <VehiculosView />}

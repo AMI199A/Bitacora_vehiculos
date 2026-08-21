@@ -47,6 +47,39 @@ CREATE TABLE bitacora_comisiones (
         END
     ) STORED,
     
+    fecha_entrada DATE,                          -- NULL = comisión de un solo día
     estado VARCHAR(20) DEFAULT 'PENDIENTE' CHECK (estado IN ('PENDIENTE', 'DESCARGADO')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 5. Tabla de Movimientos por Comisión
+CREATE TABLE comision_movimientos (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    comision_id UUID NOT NULL REFERENCES bitacora_comisiones(id) ON DELETE CASCADE,
+    orden INT NOT NULL DEFAULT 1,
+    lugar TEXT NOT NULL,
+    actividad TEXT,
+    hora_llegada TIME,
+    hora_salida_lugar TIME,
+    kilometraje NUMERIC(10, 2),        -- Odómetro en este lugar
+    fecha_movimiento DATE,              -- Fecha específica (para comisiones de varios días)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ── MIGRACIÓN (ejecutar en BD existente) ────────────────────────
+-- ALTER TABLE bitacora_comisiones ADD COLUMN IF NOT EXISTS fecha_entrada DATE;
+-- CREATE TABLE IF NOT EXISTS comision_movimientos (
+--     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+--     comision_id UUID NOT NULL REFERENCES bitacora_comisiones(id) ON DELETE CASCADE,
+--     orden INT NOT NULL DEFAULT 1,
+--     lugar TEXT NOT NULL,
+--     actividad TEXT,
+--     hora_llegada TIME,
+--     hora_salida_lugar TIME,
+--     kilometraje NUMERIC(10, 2),
+--     fecha_movimiento DATE,
+--     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- );
+-- -- Para BD existente con tabla ya creada:
+-- ALTER TABLE comision_movimientos ADD COLUMN IF NOT EXISTS kilometraje NUMERIC(10,2);
+-- ALTER TABLE comision_movimientos ADD COLUMN IF NOT EXISTS fecha_movimiento DATE;
